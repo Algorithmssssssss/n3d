@@ -65,6 +65,28 @@ docker compose --profile tunnel up -d
 
 Either way, `https://your-hostname/` is the store, `/admin` is the admin panel.
 
+### Deploy on Vercel instead
+
+`vercel.json` deploys the repo as one Vercel project with three [services](https://vercel.com/docs/services), routed the same way Caddy does it:
+
+| Path | Service | Runs as |
+|---|---|---|
+| `/api/*`, `/uploads/*` | `backend` | Express, as a Vercel Function (entrypoint `backend/app.js`) |
+| `/admin/*` | `admin` | static React build (the `/admin` prefix is stripped when looking up files) |
+| everything else | `frontend` | static React build |
+
+Both React apps call the backend from the browser via the same-origin `/api`, so there are no service bindings. The database isn't part of the deployment: use MongoDB Atlas (or the Atlas integration in the Vercel Marketplace) and set these in the project's environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `MONGODB_URI` | Atlas connection string |
+| `JWT_SECRET` | same rules as below |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | first admin, created on the first API request when there are no users |
+
+Test everything together locally with `vercel dev`.
+
+> **Image uploads don't work on Vercel yet.** Functions can't keep files on disk and Vercel ignores `express.static`, so `/api/upload` and `/uploads/*` need object storage (e.g. Vercel Blob) first. Function request bodies are also capped at 4.5 MB.
+
 ---
 
 ## ⚙️ Configuration (`.env`)

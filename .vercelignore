@@ -1,0 +1,18 @@
+# Keep secrets and local data out of `vercel deploy` uploads. On Vercel, set environment
+# variables in the project settings instead.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Uploaded images on this machine (data, not source)
+backend/uploads/*
+!backend/uploads/.gitkeep
+fullstack/
+
+# Docker-only setup
+caddy/
+docker-compose.yml
+setup.sh
