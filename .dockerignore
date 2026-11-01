@@ -1,0 +1,11 @@
+# Context for the Caddy image (caddy/Dockerfile), which only needs frontend/, admin/ and caddy/.
+# (backend/ has its own context and its own .dockerignore.)
+**/node_modules
+**/build
+**/.env
+**/.env.*
+!**/.env.example
+backend
+.git
+docker-compose.yml
+*.md

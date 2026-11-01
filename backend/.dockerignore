@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+# Uploaded images live in a volume, not in the image
+uploads
+.git
+.gitignore
+Dockerfile
+.dockerignore

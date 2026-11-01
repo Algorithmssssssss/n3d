@@ -1,0 +1,18 @@
+# Dependencies & build output
+node_modules/
+build/
+
+# Secrets - copy .env.example to .env (or run ./setup.sh); never commit the real one
+.env
+.env.local
+.env.*.local
+
+# Uploaded product images are data, not source. Keep the folder, ignore new files.
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Logs / OS / editor
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/

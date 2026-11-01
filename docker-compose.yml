@@ -1,0 +1,123 @@
+# TextilePro: MongoDB + API + Caddy.
+#
+# Caddy is the only service that publishes a port. It serves the storefront (/) and the
+# admin panel (/admin) and proxies /api and /uploads to the backend, so the whole site
+# lives on ONE address, which is exactly what a Cloudflare Tunnel needs.
+#
+# Before the first start:  ./setup.sh   (creates .env with random secrets)
+# Then:                    docker compose up -d --build
+
+# Keep container logs from growing forever on a home server
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # MongoDB (reachable only from the other containers, no published port)
+  mongodb:
+    image: mongo:6.0
+    container_name: textilepro_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Missing .env - run ./setup.sh (or copy .env.example to .env) first}
+      MONGO_INITDB_DATABASE: textilepro
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - textilepro-network
+    logging: *default-logging
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API (reachable only through Caddy, no published port)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: textilepro_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      # Passed as separate parts (not one URL) so any password works: the backend
+      # URL-encodes the credentials when it builds the connection string.
+      MONGO_HOST: mongodb
+      MONGO_USER: admin
+      MONGO_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_DB: textilepro
+      JWT_SECRET: ${JWT_SECRET:?Missing .env - run ./setup.sh (or copy .env.example to .env) first}
+      # Used once, to create the first admin when the database has no users yet
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - textilepro-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Caddy: storefront + admin panel (static builds baked into the image) + reverse proxy.
+  # Builds from the project root because it needs frontend/ and admin/.
+  caddy:
+    build:
+      context: .
+      dockerfile: caddy/Dockerfile
+    container_name: textilepro_caddy
+    restart: unless-stopped
+    ports:
+      # Point your Cloudflare Tunnel at http://localhost:${HTTP_PORT} (or http://caddy:80
+      # if cloudflared runs in this compose file). BIND_ADDRESS=127.0.0.1 keeps the port
+      # off your LAN.
+      - "${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - textilepro-network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Optional: run the Cloudflare Tunnel as part of this stack.
+  #   1. Zero Trust dashboard -> Networks -> Tunnels -> create a tunnel, copy its token
+  #   2. Add a Public Hostname pointing at  http://caddy:80
+  #   3. Put TUNNEL_TOKEN in .env, then:  docker compose --profile tunnel up -d
+  # Skip this if cloudflared already runs on the host: just point it at http://localhost:8080
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: textilepro_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - caddy
+    networks:
+      - textilepro-network
+    logging: *default-logging
+    profiles:
+      - tunnel
+
+volumes:
+  mongodb_data:
+
+networks:
+  textilepro-network:
+    driver: bridge

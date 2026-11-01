@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#2c3e50" />
+  <!-- Neutral fallbacks. The real title, description and icon come from the company
+       name, tagline and logo in Admin -> Settings (see SiteMeta / useDocumentTitle). -->
+  <meta name="description" content="Browse our product catalogue." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Khmer:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <title>Product Catalogue</title>
+  <script>
+    // Returning visitors: show the last-known company name and logo in the tab right away,
+    // before the app has loaded. The app keeps this cache ("siteSettings") up to date.
+    (function () {
+      try {
+        var site = JSON.parse(localStorage.getItem('siteSettings') || 'null');
+        if (!site || !site.companyName) return;
+        document.title = site.companyName;
+        if (site.logo && site.logo.url) {
+          var icon = document.createElement('link');
+          icon.rel = 'icon';
+          icon.href = site.logo.url;
+          document.head.appendChild(icon);
+        }
+      } catch (e) { /* storage unavailable: the app sets these itself */ }
+    })();
+  </script>
+</head>
+<body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+</body>
+</html>

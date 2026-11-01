@@ -1,0 +1,123 @@
+# Single entry point for the whole site:
+#
+#   /api/*      -> backend (Node/Express)
+#   /uploads/*  -> backend (uploaded product images)
+#   /admin/*    -> admin panel (static React build baked into this image)
+#   everything else -> storefront (static React build baked into this image)
+#
+# Cloudflare Tunnel (cloudflared) terminates TLS at Cloudflare's edge and talks plain
+# HTTP to this port, so Caddy serves HTTP only: no certificates, no HTTPS redirect.
+# The site address is ":80", so any hostname works without touching this file.
+{
+	auto_https off
+
+	servers {
+		# cloudflared (and LAN clients) connect from private addresses. Trust their
+		# forwarded headers so logs and the API's rate limiter see the real visitor IP.
+		trusted_proxies static private_ranges
+		# Cloudflare always sets Cf-Connecting-Ip (clients can't forge it). For the
+		# X-Forwarded-For fallback, read right-to-left so a client can't spoof its own IP
+		# by pre-filling the header.
+		trusted_proxies_strict
+		client_ip_headers Cf-Connecting-Ip X-Forwarded-For
+	}
+}
+
+# Reverse proxy to the backend.
+(backend) {
+	reverse_proxy backend:5000 {
+		# Tell the API the real visitor IP as Caddy worked it out (Cf-Connecting-Ip, else the
+		# forwarded chain, trusted only when it comes from a private address). One clean value,
+		# so the login rate limiter can't be dodged by spoofed headers.
+		header_up X-Forwarded-For {client_ip}
+
+		# The backend also sends X-Content-Type-Options, which would end up duplicated next
+		# to the site-wide header, so drop its copy.
+		header_down -X-Content-Type-Options
+	}
+}
+
+:80 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	# Kept separate on purpose: a delete makes Caddy defer the whole header block until the
+	# response is written, which would overwrite the stricter /admin X-Frame-Options below.
+	header -Server
+
+	# Access log on stdout (`docker compose logs caddy`). Credentials are stripped so
+	# admin login tokens never end up in the logs.
+	log {
+		output stdout
+		format filter {
+			wrap console
+			fields {
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+
+	# Liveness probe for Docker / uptime monitors
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle /api/* {
+		# Generous enough for image uploads (backend caps each file at 5MB)
+		request_body {
+			max_size 25MB
+		}
+		import backend
+	}
+
+	handle /uploads/* {
+		import backend
+	}
+
+	# Admin panel (built with homepage=/admin). /admin -> /admin/ so relative paths resolve.
+	redir /admin /admin/
+
+	handle_path /admin/* {
+		root * /srv/admin
+		header X-Frame-Options DENY
+
+		# Hashed build assets never change: cache forever, and 404 (not index.html) if missing
+		@assets path /static/*
+		handle @assets {
+			header Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+
+		# Client-side routes fall back to index.html; always revalidate it so a new
+		# deploy is picked up immediately.
+		handle {
+			header Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+
+	# Storefront
+	handle {
+		root * /srv/storefront
+
+		@assets path /static/*
+		handle @assets {
+			header Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+
+		handle {
+			header Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}

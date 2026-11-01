@@ -1,0 +1,15 @@
+.category-list-page {
+  max-width: 1200px;
+}
+
+.icon-preview {
+  width: 40px;
+  height: 40px;
+  background: var(--bg-light);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-color);
+  font-size: 1.1rem;
+}
